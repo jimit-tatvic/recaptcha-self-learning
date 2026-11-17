@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+web/node_modules/
+mobile/node_modules/
+
+# output & builds
+out/
+dist/
+build/
+web/.next/
+web/out/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+*.tgz
+
+# code coverage & logs
+coverage/
+*.lcov
+logs/
+*.log
+
+# dotenv environment variable files
+.env*
+!.env.example
+web/.env*
+
+# credentials, service account keys & secrets
+*-key.json
+personal-*.json
+recaptcha-key.json
+web/recaptcha-key.json
+google-services.json
+mobile/android/app/google-services.json
+*.pem
+*.keystore
+!debug.keystore
+
+# caches & IDEs
+.eslintcache
+.cache/
+*.tsbuildinfo
+.idea/
+.vscode/
+.DS_Store

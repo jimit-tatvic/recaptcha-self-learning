@@ -1,0 +1,19 @@
+{
+  "name": "recaptcha-self-learning",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web run start",
+    "server": "node server.js",
+    "mobile:bundle": "npm --prefix mobile run bundle-android",
+    "mobile:build-apk": "cd mobile/android && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && export PATH=\"$JAVA_HOME/bin:$PATH\" && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@google-cloud/recaptcha-enterprise": "^5.14.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
