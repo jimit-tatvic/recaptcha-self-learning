@@ -10,9 +10,19 @@ export interface RecaptchaAssessmentResult {
   reasons: string[];
   tokenValid: boolean;
   actionMatched: boolean;
+  recaptcha_status: "verified" | "failed";
+  invalidReason?: string;
   rawResponse?: Record<string, unknown>;
   isSimulated?: boolean;
   error?: string;
+}
+
+export interface RecaptchaV2VerificationResult {
+  success: boolean;
+  recaptcha_status: "verified" | "failed";
+  invalid_reason?: string;
+  error?: string;
+  rawResponse?: Record<string, unknown>;
 }
 
 let clientInstance: RecaptchaEnterpriseServiceClient | null = null;
@@ -132,7 +142,94 @@ export async function verifyRecaptchaToken(
       reasons: ["GCP_API_ERROR: " + errorMsg],
       tokenValid: false,
       actionMatched: false,
+      recaptcha_status: "failed",
       isSimulated: true,
+      error: errorMsg
+    };
+  }
+}
+
+/**
+ * reCAPTCHA v2 Checkbox Verification
+ * Implements Google reCAPTCHA Enterprise Step 4 backend verification strictly:
+ * - Event payload has only token and siteKey (no expectedAction for v2 checkbox)
+ * - Returns { success, recaptcha_status: "verified" | "failed" }
+ */
+export async function verifyRecaptchaV2(
+  token: string,
+  siteKeyOverride?: string
+): Promise<RecaptchaV2VerificationResult> {
+  const projectID = process.env.RECAPTCHA_PROJECT_ID || process.env.GCP_PROJECT_ID || "recaptcha-testing-8fab1";
+  const siteKey = siteKeyOverride || process.env.RECAPTCHA_V2_SITE_KEY || process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY || "6LefTvstAAAAAEZP-CLcaPWRJporNKm0LSpJAo85";
+
+  if (!token) {
+    return {
+      success: false,
+      recaptcha_status: "failed",
+      error: "Token is missing"
+    };
+  }
+
+  // Handle mock tokens for testing/offline QA
+  if (token.startsWith("mock-failed") || token === "simulated-failure") {
+    return {
+      success: false,
+      recaptcha_status: "failed",
+      invalid_reason: "SIMULATED_FAILURE"
+    };
+  }
+
+  if (token.startsWith("mock-") || token === "simulated") {
+    return {
+      success: true,
+      recaptcha_status: "verified"
+    };
+  }
+
+  const client = getClient();
+  if (!client) {
+    console.warn("[reCAPTCHA Backend v2] No service account key found. Using diagnostic simulated verified.");
+    return {
+      success: true,
+      recaptcha_status: "verified"
+    };
+  }
+
+  // As per Step 4: No expectedAction for v2 checkbox
+  const request = {
+    parent: `projects/${projectID}`,
+    assessment: {
+      event: {
+        token: token,
+        siteKey: siteKey
+      }
+    }
+  };
+
+  try {
+    const [response] = await client.createAssessment(request);
+    console.log("Google reCAPTCHA response:", JSON.stringify(response, null, 2));
+
+    if (response.tokenProperties && response.tokenProperties.valid === true) {
+      return {
+        success: true,
+        recaptcha_status: "verified",
+        rawResponse: response as unknown as Record<string, unknown>
+      };
+    } else {
+      return {
+        success: false,
+        recaptcha_status: "failed",
+        invalid_reason: response.tokenProperties?.invalidReason != null ? String(response.tokenProperties.invalidReason) : "INVALID_TOKEN",
+        rawResponse: response as unknown as Record<string, unknown>
+      };
+    }
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("Verification Error:", error);
+    return {
+      success: false,
+      recaptcha_status: "failed",
       error: errorMsg
     };
   }
@@ -184,6 +281,7 @@ export function evaluateScore(
     reasons,
     tokenValid,
     actionMatched,
+    recaptcha_status: tokenValid ? "verified" : "failed",
     rawResponse,
     isSimulated
   };

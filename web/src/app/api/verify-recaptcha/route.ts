@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyRecaptchaToken } from "@/lib/recaptcha-service";
+import { verifyRecaptchaToken, verifyRecaptchaV2 } from "@/lib/recaptcha-service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,21 +8,29 @@ export async function POST(req: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { error: "Missing required parameter: token" },
+        {
+          success: false,
+          recaptcha_status: "failed",
+          error: "Token is missing"
+        },
         { status: 400 }
       );
     }
 
-    const effectiveSiteKey = siteKey || (version === "v2"
-      ? (process.env.RECAPTCHA_V2_SITE_KEY || process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY || "6LefTvstAAAAAEZP-CLcaPWRJporNKm0LSpJAo85")
-      : (process.env.RECAPTCHA_SITE_KEY || process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "6LegCfstAAAAAErSFGl5A2C1j9OgpHGC9rkHBFfL")
-    );
+    // Step 4: reCAPTCHA v2 Checkbox Backend Verification
+    if (version === "v2") {
+      const effectiveSiteKey = siteKey || process.env.RECAPTCHA_V2_SITE_KEY || process.env.NEXT_PUBLIC_RECAPTCHA_V2_SITE_KEY || "6LefTvstAAAAAEZP-CLcaPWRJporNKm0LSpJAo85";
+      const result = await verifyRecaptchaV2(token, effectiveSiteKey);
+      return NextResponse.json(result);
+    }
 
+    // reCAPTCHA v3 Invisible / Score Verification
+    const effectiveSiteKey = siteKey || process.env.RECAPTCHA_SITE_KEY || process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "6LegCfstAAAAAErSFGl5A2C1j9OgpHGC9rkHBFfL";
     const result = await verifyRecaptchaToken(token, action, simulatedScore, effectiveSiteKey);
 
-    // Return format adhering to the doc specification
     return NextResponse.json({
-      success: true,
+      success: result.tokenValid,
+      recaptcha_status: result.tokenValid ? "verified" : "failed",
       action: action,
       riskAnalysis: {
         score: result.score,
@@ -44,11 +52,9 @@ export async function POST(req: NextRequest) {
     console.error("[API verify-recaptcha] Error:", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Internal Server Error",
-        riskAnalysis: { score: 0.0, reasons: ["INTERNAL_ERROR"] },
-        userType: "bot",
-        recaptchaRisk: "HIGH_RISK",
-        decision: "BLOCK"
+        success: false,
+        recaptcha_status: "failed",
+        error: error instanceof Error ? error.message : "Internal Server Error"
       },
       { status: 500 }
     );

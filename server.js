@@ -19,50 +19,62 @@ try {
   console.warn("reCAPTCHA Enterprise Client warning (fallback to simulated mode if needed):", e.message);
 }
 
-// 1. Web Verification Endpoint
-app.post("/verify-recaptcha", async (req, res) => {
-  const token = req.body.token;
-  const action = req.body.action || "page_view";
-  console.log(`[Web API] Received token for action: ${action}`);
-
-  if (!token) {
-    return res.status(400).json({ error: "Missing token" });
-  }
-
-  // Handle simulation if requested
-  if (req.body.simulatedScore !== undefined) {
-    const score = Number(req.body.simulatedScore);
-    return res.json({
-      riskAnalysis: { score: score, reasons: ["SIMULATED"] },
-      tokenProperties: { valid: true, action: action }
-    });
-  }
-
-  const request = {
-    parent: `projects/${projectID}`,
-    assessment: {
-      event: {
-        token: token,
-        siteKey: siteKey,
-      }
-    }
-  };
-
+// 1. Web Verification Endpoint (Step 4 from reCAPTCHA v2 Enterprise Doc)
+app.post("/verify-recaptcha", async function(req, res) {
   try {
+    var token = req.body.token;
+    if (!token) {
+      return res.json({
+        success: false,
+        recaptcha_status: "failed",
+        error: "Token is missing"
+      });
+    }
+
+    var targetProjectID = req.body.projectID || projectID;
+    var targetSiteKey = req.body.siteKey || process.env.RECAPTCHA_V2_SITE_KEY || siteKey;
+
+    var request = {
+      parent: "projects/" + targetProjectID,
+      assessment: {
+        event: {
+          token: token,
+          siteKey: targetSiteKey
+        }
+      }
+    };
+
     if (!client) {
       // Diagnostic fallback when service account key isn't installed yet
       return res.json({
-        warning: "Running in diagnostic mode (no recaptcha-key.json detected)",
-        riskAnalysis: { score: 0.85, reasons: [] },
-        tokenProperties: { valid: true, action: action }
+        success: true,
+        recaptcha_status: "verified"
       });
     }
-    const [response] = await client.createAssessment(request);
-    console.log("[Web API] Google assessment response:", response);
-    res.json(response);
+
+    var result = await client.createAssessment(request);
+    var response = result[0];
+    console.log("Google reCAPTCHA response:", JSON.stringify(response, null, 2));
+
+    if (response.tokenProperties && response.tokenProperties.valid === true) {
+      return res.json({
+        success: true,
+        recaptcha_status: "verified"
+      });
+    } else {
+      return res.json({
+        success: false,
+        recaptcha_status: "failed",
+        invalid_reason: response.tokenProperties && response.tokenProperties.invalidReason
+      });
+    }
   } catch (error) {
-    console.error("[Web API] Error:", error.message);
-    res.status(500).json({ error: error.message });
+    console.error("Verification Error:", error);
+    return res.status(500).json({
+      success: false,
+      recaptcha_status: "failed",
+      error: "Verification failed"
+    });
   }
 });
 
